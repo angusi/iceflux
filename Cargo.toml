@@ -1,0 +1,14 @@
+[package]
+name = "iceflux"
+version = "0.1.0"
+authors = ["Angus Ireland <rust-crates@angusi.net>"]
+
+[dependencies]
+fern = "0.3"
+hyper = "0.10"
+influent = "0.4"
+log = "0.3"
+serde = "0.9"
+serde_derive = "0.9"
+serde-xml-rs = "0.1"
+time = "0.1"
