@@ -3,21 +3,9 @@ extern crate serde_derive;
 
 #[macro_use]
 extern crate log;
-extern crate fern;
 
-extern crate serde;
-extern crate serde_xml_rs;
-
-extern crate hyper;
-extern crate influent;
-extern crate time;
-
-use hyper::Url;
-use hyper::header::{Headers, Authorization, Basic};
-use influent::create_client;
 use influent::client::{Client, Credentials};
 use influent::measurement::{Measurement, Value};
-use std::io::prelude::*;
 
 mod config {
     use std::env;
@@ -86,8 +74,16 @@ mod list_mounts {
     }
 }
 
+// Name your user agent after your app?
+static APP_USER_AGENT: &str = concat!(
+    env!("CARGO_PKG_NAME"),
+    "/",
+    env!("CARGO_PKG_VERSION"),
+);
+
 /// The main program entrypoint.
-fn main() {
+#[tokio::main(flavor = "current_thread")]
+async fn main() {
     println!("Icecast InfluxDB Stats Importer");
     init_logger();
 
@@ -96,10 +92,10 @@ fn main() {
     info!("Creating InfluxDB Client");
     let influx_client = create_influx_client(&config.influxdb);
     info!("Creating HTTP Client");
-    let client = hyper::Client::new();
+    let client = create_icecast_client(&config.icecast);
 
     loop {
-        let listmounts_xml = read_icecast_xml(&config.icecast, &client, "admin/listmounts"); 
+        let listmounts_xml = read_icecast_xml(&config.icecast, &client, "admin/listmounts").await; 
 
         let mounts: list_mounts::Icestats = serde_xml_rs::deserialize(listmounts_xml.as_bytes()).unwrap();
         debug!("{:?}", mounts);
@@ -128,28 +124,18 @@ fn init_logger() {
     debug!("Logger initialised");
 }
 
-fn read_icecast_xml(icecast_config: &config::IcecastConfig, client: &hyper::Client, endpoint: &str) -> String {
+async fn read_icecast_xml(icecast_config: &config::IcecastConfig, client: &reqwest::Client, endpoint: &str) -> String {
     let uri_string = format!("http://{0}:{1}/{2}", icecast_config.host, icecast_config.port, endpoint);
     info!("Reading XML from Icecast ({})", &uri_string);
 
-    let mut headers = Headers::new();
-    headers.set(
-       Authorization(
-           Basic {
-               username: icecast_config.user.to_owned(),
-               password: Some(icecast_config.password.to_owned())
-           }
-       )
-    );
+    let res = client.get(uri_string).basic_auth(&icecast_config.user, Some(&icecast_config.password)).send().await.expect("XML request failed");
+    assert_eq!(res.status(), reqwest::StatusCode::OK);
+    info!("XML received OK");
 
-    let uri = Url::parse(uri_string.as_str()).unwrap();
-    let mut res = client.get(uri).headers(headers).send().unwrap();
-    assert_eq!(res.status, hyper::Ok);
+
+    let contents = res.text().await.expect("XML read failed");
     info!("XML read OK");
-
-    let mut contents = String::new();
-    res.read_to_string(&mut contents).unwrap();
-
+    
     contents
 }
 
@@ -161,7 +147,11 @@ fn create_influx_client(influx_config: &config::InfluxConfig) -> influent::clien
     };
     
     let hosts: Vec<&str> = vec![&influx_config.host];
-    create_client(credentials, hosts)
+    influent::create_client(credentials, hosts)
+}
+
+fn create_icecast_client(_icecast_config: &config::IcecastConfig) -> reqwest::Client {
+    reqwest::ClientBuilder::new().user_agent(APP_USER_AGENT).build().expect("Couldn't build client!")
 }
 
 fn icecast_stats_to_measurements<'a>(stats: &'a list_mounts::Icestats, host: &'a String, timestamp: &time::Tm) -> Vec<Measurement<'a>> {
