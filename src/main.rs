@@ -10,14 +10,14 @@ use influent::measurement::{Measurement, Value};
 mod config {
     use std::env;
 
-    pub struct IcecastConfig {
+    pub struct Icecast {
         pub user: String,
         pub password: String,
         pub host: String,
         pub port: i16,
     }
 
-    pub struct InfluxConfig {
+    pub struct Influx {
         pub user: String,
         pub password: String,
         pub host: String,
@@ -25,13 +25,13 @@ mod config {
     }
 
     pub struct Config {
-        pub icecast: IcecastConfig,
-        pub influxdb: InfluxConfig,
+        pub icecast: Icecast,
+        pub influxdb: Influx,
     }
 
     impl Config {
         pub fn new() -> Config {
-            let icecast_config = IcecastConfig {
+            let icecast_config = Icecast {
                 user: env::var("ICECAST_USER").expect("Missing environment variable ICECAST_USER"),
                 password: env::var("ICECAST_PASSWORD")
                     .expect("Missing environment variable ICECAST_PORT"),
@@ -41,7 +41,7 @@ mod config {
                     .parse::<i16>()
                     .expect("ICECAST_PORT must be between 1:65535"),
             };
-            let influx_config = InfluxConfig {
+            let influx_config = Influx {
                 user: env::var("INFLUX_USER").expect("Missing environment variable INFLUX_USER"),
                 password: env::var("INFLUX_PASSWORD")
                     .expect("Missing environment variable INFLUX_PASSWORD"),
@@ -141,7 +141,7 @@ fn init_logger() {
 }
 
 async fn read_icecast_xml(
-    icecast_config: &config::IcecastConfig,
+    icecast_config: &config::Icecast,
     client: &reqwest::Client,
     endpoint: &str,
 ) -> String {
@@ -166,9 +166,7 @@ async fn read_icecast_xml(
     contents
 }
 
-fn create_influx_client(
-    influx_config: &config::InfluxConfig,
-) -> influent::client::http::HttpClient {
+fn create_influx_client(influx_config: &config::Influx) -> influent::client::http::HttpClient {
     let credentials: Credentials = Credentials {
         username: &influx_config.user,
         password: &influx_config.password,
@@ -179,7 +177,7 @@ fn create_influx_client(
     influent::create_client(credentials, hosts)
 }
 
-fn create_icecast_client(_icecast_config: &config::IcecastConfig) -> reqwest::Client {
+fn create_icecast_client(_icecast_config: &config::Icecast) -> reqwest::Client {
     reqwest::ClientBuilder::new()
         .user_agent(APP_USER_AGENT)
         .build()
@@ -192,7 +190,7 @@ fn icecast_stats_to_measurements<'a>(
     timestamp: &time::Tm,
 ) -> Vec<Measurement<'a>> {
     let timestamp: i64 =
-        timestamp.to_timespec().sec * 1000000000 + (timestamp.to_timespec().nsec as i64);
+        timestamp.to_timespec().sec * 1_000_000_000 + i64::from(timestamp.to_timespec().nsec);
     info!("Creating InfluxDB Measurements for timestamp {}", timestamp);
 
     let (mut measurements, total_listeners) = stats
