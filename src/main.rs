@@ -188,7 +188,7 @@ fn create_icecast_client(_icecast_config: &config::IcecastConfig) -> reqwest::Cl
 
 fn icecast_stats_to_measurements<'a>(
     stats: &'a list_mounts::Icestats,
-    host: &'a String,
+    host: &'a str,
     timestamp: &time::Tm,
 ) -> Vec<Measurement<'a>> {
     let timestamp: i64 =
@@ -203,7 +203,7 @@ fn icecast_stats_to_measurements<'a>(
             measurement.add_tag("host", host);
             measurement.add_tag("mount", source.mount.as_ref().unwrap());
             measurement.add_field("value", Value::Integer(source.listeners));
-            measurement.set_timestamp(timestamp.clone());
+            measurement.set_timestamp(timestamp);
 
             (measurement, source.listeners)
         })
